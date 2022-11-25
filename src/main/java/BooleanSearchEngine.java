@@ -13,6 +13,7 @@ public class BooleanSearchEngine implements SearchEngine {
     private Map<String, List<PageEntry>> wordCount = new HashMap<>();
     private File pdfsDir;
     private Set<String> stopRu = new HashSet<>();
+    private Map<String, PdfDocument> docs = new HashMap<>();
 
     public BooleanSearchEngine(File pdfsDir) throws IOException {
         this.pdfsDir = pdfsDir;
@@ -27,6 +28,7 @@ public class BooleanSearchEngine implements SearchEngine {
         for (File file : listOfFiles) {
             if (file.isFile() && file.getName().endsWith(".pdf")) {
                 var doc = new PdfDocument(new PdfReader(file));
+                docs.put(file.getName(), doc);
                 for (int i = 1; i <= doc.getNumberOfPages(); i++) {
                     PdfPage page = doc.getPage(i);
                     String text = PdfTextExtractor.getTextFromPage(page);
@@ -58,36 +60,32 @@ public class BooleanSearchEngine implements SearchEngine {
             return wordCount.get(word.toLowerCase()).stream().sorted(Comparator.reverseOrder()).collect(Collectors.toList());
         } else {
             List<PageEntry> pageEntries = new ArrayList<>();
-            File[] listOfFiles = pdfsDir.listFiles();
-            for (File file : listOfFiles) {
-                if (file.isFile() && file.getName().endsWith(".pdf")) {
-                    try (var doc = new PdfDocument((new PdfReader(file)))) {
-                        for (int i = 1; i <= doc.getNumberOfPages(); i++) {
-                            PdfPage page = doc.getPage(i);
-                            String text = PdfTextExtractor.getTextFromPage(page);
-                            String[] words = text.split("\\P{IsAlphabetic}+");
-                            Map<String, Integer> freqs = new HashMap<>();
-                            for (String oneWord : words) {
-                                if (oneWord.isEmpty()) {
-                                    continue;
-                                }
-                                oneWord = oneWord.toLowerCase();
-                                freqs.put(oneWord, freqs.getOrDefault(oneWord, 0) + 1);
-                            }
-                            int count = 0;
-                            for (String requestedWord : requestedWords) {
-                                if (freqs.containsKey(requestedWord) && !stopRu.contains(requestedWord)) {
-                                    count += freqs.get(requestedWord);
-                                }
-                            }
-                            if (count != 0) {
-                                pageEntries.add(new PageEntry(file.getName(), i, count));
-                            }
+            for (Map.Entry<String, PdfDocument> entry : docs.entrySet()) {
+                String fileName = entry.getKey();
+                PdfDocument doc = entry.getValue();
+                for (int i = 1; i <= doc.getNumberOfPages(); i++) {
+                    PdfPage page = doc.getPage(i);
+                    String text = PdfTextExtractor.getTextFromPage(page);
+                    String[] words = text.split("\\P{IsAlphabetic}+");
+                    Map<String, Integer> freqs = new HashMap<>();
+                    for (String oneWord : words) {
+                        if (oneWord.isEmpty()) {
+                            continue;
                         }
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
+                        oneWord = oneWord.toLowerCase();
+                        freqs.put(oneWord, freqs.getOrDefault(oneWord, 0) + 1);
+                    }
+                    int count = 0;
+                    for (String requestedWord : requestedWords) {
+                        if (freqs.containsKey(requestedWord) && !stopRu.contains(requestedWord)) {
+                            count += freqs.get(requestedWord);
+                        }
+                    }
+                    if (count != 0) {
+                        pageEntries.add(new PageEntry(fileName, i, count));
                     }
                 }
+
             }
             return pageEntries;
         }
